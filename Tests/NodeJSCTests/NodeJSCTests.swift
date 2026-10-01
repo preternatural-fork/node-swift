@@ -4,34 +4,29 @@ import XCTest
 import JavaScriptCore
 
 final class NodeJSCTests: XCTestCase {
+    // Async XCTest methods do not reliably inherit invokeTest's TaskLocal on
+    // Swift 6.4. Keep one JSC environment for this suite so the executor's
+    // global default remains unambiguous when XCTest schedules an async test.
+    nonisolated(unsafe) private static let environment: (context: JSContext, queue: NodeAsyncQueue.Handle) = {
+        guard let context = JSContext() else { fatalError("Could not create JSContext") }
+        let queue = NodeEnvironment.withJSC(context: context) {
+            try NodeAsyncQueue(label: "queue").handle()
+        }
+        guard let queue else { fatalError("Could not obtain NodeAsyncQueue") }
+        return (context, queue)
+    }()
+
     private let sutBox = Box<JSContext?>(nil)
     private var sut: JSContext { sutBox.value! }
 
     override func invokeTest() {
-        var global: JSManagedValue?
-        autoreleasepool {
-            guard let sut = JSContext() else { fatalError("Could not create JSContext") }
-            sutBox.value = sut
-            global = JSManagedValue(value: sut.globalObject)
-            let queue = NodeEnvironment.withJSC(context: sut) {
-                try NodeAsyncQueue(label: "queue").handle()
-            }
-            guard let queue else { fatalError("Could not obtain NodeAsyncQueue") }
-            NodeActor.$target.withValue(queue) {
-                super.invokeTest()
-            }
-            self.sutBox.value = nil
-            sut.debugGCSync()
+        let environment = Self.environment
+        sutBox.value = environment.context
+        NodeActor.$target.withValue(environment.queue) {
+            super.invokeTest()
         }
-        if let global {
-            // TODO: call napi_env_jsc_delete when the time is right
-            // we might want to use refs as the source of truth
-            // instead of relying on a unique owner
-            _ = global
-            // XCTAssertNil(global.value)
-        } else {
-            XCTFail("global == nil")
-        }
+        sutBox.value = nil
+        environment.context.debugGCSync()
     }
 
     @NodeActor func testBasic() async throws {

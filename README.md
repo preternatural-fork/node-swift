@@ -51,6 +51,10 @@ The Swift package is exposed to JavaScript as a native Node.js module, which can
 
 For details, see the example in [/example](/example).
 
+## Testing with Xcode 27
+
+Run `npm test` for the Node integration suites and `npm run test:swift` for the Swift/XCTest suites. The latter uses SwiftPM's native build system because Xcode 27's default `swiftbuild` mode can fail to link tests that depend on prebuilt SwiftSyntax ([SwiftPM issue #10218](https://github.com/swiftlang/swift-package-manager/issues/10218)). This is a test-toolchain workaround; the library itself builds with `swift build -c release`.
+
 <!-- For details, refer to the documentation and examples:
 
 - [example](/example)
