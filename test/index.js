@@ -22,7 +22,7 @@ async function runAll() {
         // invoke isChild processes because that way lifetime stuff
         // is handled on a per-test basis
         const status = spawnSync(
-            "node", [__filename, "_suite", suite],
+            process.execPath, [__filename, "_suite", suite],
             { stdio: [process.stdin, process.stdout, process.stderr] }
         ).status;
         if (status === 0) {
@@ -32,7 +32,8 @@ async function runAll() {
             console.log(`Suite '${suite}' failed: exit code ${status}`);
         }
     }
-    if (!hasFailure) console.log("All tests passed!");
+    if (hasFailure) process.exitCode = 1;
+    else console.log("All tests passed!");
 }
 
 (async () => {

@@ -43,7 +43,9 @@ console.log(add(5, 10)); // 5.0 + 10.0 = 15.0
 
 ## How?
 
-A NodeSwift module consists of an [SwiftPM](https://swift.org/package-manager/) package and [NPM](https://www.npmjs.com) package in the same folder, both of which express NodeSwift as a dependency.
+A NodeSwift module consists of a [SwiftPM](https://swift.org/package-manager/) package and a JavaScript package in the same folder, both of which express NodeSwift as a dependency. This fork uses Bun for package management by default (`bun install`, `bun run build`). npm remains supported (`npm ci`, `npm run build`). The `prepare` script calls `tsc` directly so it does not switch package managers during installation.
+
+For a Node runtime check, run `bun run test`. For a Bun runtime check, run `bun run test:bun`; both suites load the compiled `.node` modules. The Swift/XCTest suite is `bun run test:swift`.
 
 The Swift package is exposed to JavaScript as a native Node.js module, which can be `require`'d by the JS code. The two sides communicate via [Node-API](https://nodejs.org/api/n-api.html), which is wrapped by the `NodeAPI` module on the Swift side.
 
