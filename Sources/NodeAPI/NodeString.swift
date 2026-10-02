@@ -37,6 +37,27 @@ public final class NodeString: NodePrimitive, NodeName, NodeValueCoercible {
         self.base = NodeValueBase(raw: result, in: ctx)
     }
 
+    /// Converts without replacing unpaired JavaScript UTF-16 surrogates.
+    /// Unlike `string()`, malformed Unicode throws instead of becoming U+FFFD.
+    public func validatedString() throws -> String {
+        let env = base.environment
+        let value = try base.rawValue()
+        var length = 0
+        try env.check(napi_get_value_string_utf16(env.raw, value, nil, 0, &length))
+        var units = [UInt16](repeating: 0, count: length + 1)
+        try units.withUnsafeMutableBufferPointer {
+            try env.check(napi_get_value_string_utf16(env.raw, value, $0.baseAddress, $0.count, &length))
+        }
+        let input = units.prefix(length)
+        let string = String(decoding: input, as: UTF16.self)
+        // Exact code-unit roundtrip works on the package's oldest supported
+        // platforms, where String(validating:as:) is not available.
+        guard string.utf16.elementsEqual(input) else {
+            throw try NodeError(typeErrorCode: "InvalidUnicode", message: "String contains unpaired UTF-16 surrogates")
+        }
+        return string
+    }
+
     public func string() throws -> String {
         let env = base.environment
         let nodeVal = try base.rawValue()

@@ -44,6 +44,18 @@ final class NodeJSCTests: XCTestCase {
         XCTAssertEqual(try empty.withUnsafeBytes { $0.count }, 0)
     }
 
+    @NodeActor func testValidatedStringsPreserveScalarsAndRejectSurrogates() async throws {
+        for text in ["", "😀", "a\0Cafe\u{301}", "�"] {
+            XCTAssertEqual(try NodeString(text).validatedString(), text)
+        }
+        let bom = try XCTUnwrap(Node.run(script: "String.fromCharCode(0xfeff) + 'a'").as(NodeString.self))
+        XCTAssertEqual(try bom.validatedString(), "\u{FEFF}a")
+        for script in ["String.fromCharCode(0xd800)", "String.fromCharCode(0xdfff)", "'a' + String.fromCharCode(0xd800) + 'b'"] {
+            let string = try XCTUnwrap(Node.run(script: script).as(NodeString.self))
+            XCTAssertThrowsError(try string.validatedString())
+        }
+    }
+
     @NodeActor func testBasic() async throws {
         let string = try NodeString("Hello, world!")
         XCTAssertEqual(try string.string(), "Hello, world!")
