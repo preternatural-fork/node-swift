@@ -83,6 +83,12 @@ final class NodeContext {
         values.append(Weak(value))
     }
 
+    @NodeActor private func persistValues() throws {
+        let queue = try environment.getDefaultQueue()
+        for value in values { try value.value?.persist(releaseQueue: queue) }
+        values.removeAll()
+    }
+
     @NodeActor private static func _withContext<T>(
         _ ctx: NodeContext,
         environment env: NodeEnvironment,
@@ -95,11 +101,7 @@ final class NodeContext {
             if isTopLevel {
                 // get the release queue one time and pass it in
                 // to all persist calls for perf
-                let q = try env.getDefaultQueue()
-                for val in ctx.values {
-                    try val.value?.persist(releaseQueue: q)
-                }
-                ctx.values.removeAll()
+                try ctx.persistValues()
             } else {
                 #if DEBUG
                 let escapedBase: NodeValueBase?
@@ -125,12 +127,26 @@ final class NodeContext {
                 }
                 #endif
             }
-        } catch let error where isTopLevel {
-            try? ctx.environment.throw(error)
+        } catch let originalError where isTopLevel {
+            do {
+                // Error conversion can cache JS helpers (the wrapped-error
+                // WeakMap, for example). Persist those and any values retained
+                // by the failed callback before leaving its handle scope.
+                let exception = try AnyNodeValue(error: originalError)
+                try ctx.persistValues()
+                try ctx.environment.throw(exception)
+            } catch {
+                // A failed bridge must not turn a Swift error into a successful
+                // undefined result. Preserve an existing pending exception, or
+                // throw a plain JS error when wrapped-error conversion fails.
+                String(describing: originalError).withCString { message in
+                    _ = napi_throw_error(env.raw, nil, message)
+                }
+            }
             // we have to bail before the return statement somehow.
             // isTopLevel:true is accompanied by try? so what we
             // throw here doesn't really matter
-            throw error
+            throw originalError
         }
         return ret
     }

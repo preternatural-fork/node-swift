@@ -49,6 +49,28 @@ final class NodeJSCTests: XCTestCase {
         XCTAssertEqual(try string.string(), "Hello, world!")
     }
 
+    @NodeActor func testErrorPathPersistsCachedHelpersAcrossGC() async throws {
+        enum Failure: Error { case expected }
+        let key = NodeInstanceDataKey<NodeObject>()
+        try Node.global.failingHelper.set(to: NodeFunction { _ throws -> Void in
+            if Node[key] == nil { Node[key] = try NodeObject(["sentinel": 42]) }
+            throw Failure.expected
+        })
+        for _ in 0..<2 {
+            do {
+                try Node.run(script: "failingHelper()")
+                XCTFail("Expected the Swift callback error")
+            } catch {
+                let value = try XCTUnwrap(error as? AnyNodeValue)
+                XCTAssertTrue(value.nativeError is Failure, "wrapped Swift error survives round-trip")
+            }
+            await sut.debugGC()
+            XCTAssertEqual(try Node[key]?.sentinel.as(Int.self), 42, "helpers created by a failing callback remain rooted")
+        }
+        Node[key] = nil
+        try Node.global.failingHelper.set(to: null)
+    }
+
     @NodeActor func testGC() async throws {
         var finalized = false
         try autoreleasepool {
