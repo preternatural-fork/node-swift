@@ -176,6 +176,22 @@ public class NodeAnyTypedArray: NodeObject {
         return try NodeTypedArrayKind(raw: type)
     }
 
+    /// Retrieves the actual backing ArrayBuffer through Node-API, without invoking
+    /// JavaScript properties. Returns nil for a SharedArrayBuffer-backed view.
+    public final func arrayBuffer() throws -> NodeArrayBuffer? {
+        let env = base.environment
+        var buffer: napi_value!
+        try env.check(napi_get_typedarray_info(env.raw, base.rawValue(), nil, nil, nil, &buffer, nil))
+        return try NodeValueBase(raw: buffer, in: .current).as(NodeArrayBuffer.self)
+    }
+
+    /// Borrows read-only storage synchronously. The pointer must not escape; do
+    /// not reenter JavaScript, detach/resize storage or schedule asynchronous work.
+    /// This does not make shared storage immutable or provide a memory lease.
+    public final func withUnsafeRawBytes<T>(_ body: (UnsafeRawBufferPointer) throws -> T) throws -> T {
+        try withUnsafeMutableRawBytes { try body(UnsafeRawBufferPointer($0)) }
+    }
+
     // offset in backing array buffer
     public final func byteOffset() throws -> Int {
         let env = base.environment
@@ -209,6 +225,11 @@ public class NodeTypedArray<Element: NodeTypedArrayElement>: NodeAnyTypedArray {
 
     public init(for buf: NodeArrayBuffer, offset: Int = 0, count: Int) throws {
         try super.init(for: buf, kind: Element.kind, offset: offset, count: count)
+    }
+
+    /// Read-only projection with the same synchronous lifetime as withUnsafeRawBytes.
+    public func withUnsafeBytes<T>(_ body: (UnsafeBufferPointer<Element>) throws -> T) throws -> T {
+        try withUnsafeRawBytes { try body($0.bindMemory(to: Element.self)) }
     }
 
     public func withUnsafeMutableBytes<T>(_ body: (UnsafeMutableBufferPointer<Element>) throws -> T) throws -> T {

@@ -29,6 +29,21 @@ final class NodeJSCTests: XCTestCase {
         environment.context.debugGCSync()
     }
 
+    @NodeActor func testTypedArrayReadOnlyBorrowUsesIntrinsicBackingAndSlice() async throws {
+        let backing = try NodeArrayBuffer(capacity: 16)
+        let view = try NodeTypedArray<UInt8>(for: backing, offset: 2, count: 3)
+        try view.withUnsafeMutableBytes { bytes in bytes[0] = 7; bytes[1] = 8; bytes[2] = 9 }
+        XCTAssertEqual(try view.withUnsafeBytes { Array($0) }, [7, 8, 9])
+        XCTAssertEqual(try view.withUnsafeRawBytes { $0.count }, 3)
+        XCTAssertEqual(try view.byteOffset(), 2)
+        let decoy = try NodeArrayBuffer(capacity: 1)
+        try view.property(forKey: "buffer").set(to: decoy)
+        let actual = try XCTUnwrap(view.arrayBuffer())
+        XCTAssertEqual(try actual.withUnsafeMutableBytes { $0.count }, 16)
+        let empty = try NodeTypedArray<UInt8>(for: backing, count: 0)
+        XCTAssertEqual(try empty.withUnsafeBytes { $0.count }, 0)
+    }
+
     @NodeActor func testBasic() async throws {
         let string = try NodeString("Hello, world!")
         XCTAssertEqual(try string.string(), "Hello, world!")
